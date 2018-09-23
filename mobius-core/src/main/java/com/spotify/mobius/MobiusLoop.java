@@ -21,6 +21,7 @@ package com.spotify.mobius;
 
 import static com.spotify.mobius.internal_util.Preconditions.checkNotNull;
 
+import com.spotify.mobius.actors.WorkRunnerActor;
 import com.spotify.mobius.disposables.Disposable;
 import com.spotify.mobius.functions.Consumer;
 import com.spotify.mobius.functions.Producer;
@@ -39,8 +40,8 @@ import javax.annotation.Nullable;
  */
 public class MobiusLoop<M, E, F> implements Disposable {
 
-  @Nonnull private final MessageDispatcher<E> eventDispatcher;
-  @Nonnull private final MessageDispatcher<F> effectDispatcher;
+  @Nonnull private final WorkRunnerActor<E> eventDispatcher;
+  @Nonnull private final WorkRunnerActor<F> effectDispatcher;
 
   @Nonnull private final EventProcessor<M, E, F> eventProcessor;
   @Nonnull private final Connection<F> effectConsumer;
@@ -109,8 +110,8 @@ public class MobiusLoop<M, E, F> implements Disposable {
           }
         };
 
-    this.eventDispatcher = new MessageDispatcher<>(eventRunner, onEventReceived);
-    this.effectDispatcher = new MessageDispatcher<>(effectRunner, onEffectReceived);
+    this.eventDispatcher = new WorkRunnerActor<>(eventRunner, onEventReceived);
+    this.effectDispatcher = new WorkRunnerActor<>(effectRunner, onEffectReceived);
 
     this.eventProcessor = eventProcessorFactory.create(effectDispatcher, onModelChanged);
 

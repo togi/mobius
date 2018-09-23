@@ -17,11 +17,10 @@
  * limitations under the License.
  * -/-/-
  */
-package com.spotify.mobius;
+package com.spotify.mobius.actors;
 
 import static com.spotify.mobius.internal_util.Preconditions.checkNotNull;
 
-import com.spotify.mobius.disposables.Disposable;
 import com.spotify.mobius.functions.Consumer;
 import com.spotify.mobius.runners.WorkRunner;
 import javax.annotation.Nonnull;
@@ -33,14 +32,14 @@ import org.slf4j.LoggerFactory;
  *
  * @param <M> message type (typically a model, event, or effect descriptor type)
  */
-class MessageDispatcher<M> implements Consumer<M>, Disposable {
+public class WorkRunnerActor<M> implements Actor<M> {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(MessageDispatcher.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(WorkRunnerActor.class);
 
   @Nonnull private final WorkRunner runner;
   @Nonnull private final Consumer<M> consumer;
 
-  MessageDispatcher(WorkRunner runner, Consumer<M> consumer) {
+  public WorkRunnerActor(WorkRunner runner, Consumer<M> consumer) {
     this.runner = checkNotNull(runner);
     this.consumer = checkNotNull(consumer);
   }
