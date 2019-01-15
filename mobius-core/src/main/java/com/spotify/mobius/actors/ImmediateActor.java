@@ -20,19 +20,28 @@
 package com.spotify.mobius.actors;
 
 import com.spotify.mobius.functions.Consumer;
-import com.spotify.mobius.functions.Producer;
-import com.spotify.mobius.runners.WorkRunner;
 
-public class WorkRunnerActorFactory implements ActorFactory {
+/**
+ * An {@link Actor} that immediately calls its {@link Consumer} on the same thread.
+ */
+public class ImmediateActor<T> implements Actor<T> {
 
-  private final Producer<WorkRunner> workRunnerFactory;
+  private final Consumer<T> consumer;
+  private boolean disposed;
 
-  public WorkRunnerActorFactory(Producer<WorkRunner> workRunner) {
-    workRunnerFactory = workRunner;
+  public ImmediateActor(Consumer<T> consumer) {
+    this.consumer = consumer;
   }
 
   @Override
-  public <T> Actor<T> create(Consumer<T> consumer) {
-    return new WorkRunnerActor<>(workRunnerFactory.get(), consumer);
+  public synchronized void accept(T message) {
+    if (disposed) return;
+
+    consumer.accept(message);
+  }
+
+  @Override
+  public synchronized void dispose() {
+    disposed = true;
   }
 }

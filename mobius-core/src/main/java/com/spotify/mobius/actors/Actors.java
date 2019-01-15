@@ -16,23 +16,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  * -/-/-
- */
-package com.spotify.mobius.actors;
+ */package com.spotify.mobius.actors;
 
 import com.spotify.mobius.functions.Consumer;
-import com.spotify.mobius.functions.Producer;
-import com.spotify.mobius.runners.WorkRunner;
 
-public class WorkRunnerActorFactory implements ActorFactory {
+public class Actors {
 
-  private final Producer<WorkRunner> workRunnerFactory;
-
-  public WorkRunnerActorFactory(Producer<WorkRunner> workRunner) {
-    workRunnerFactory = workRunner;
-  }
-
-  @Override
-  public <T> Actor<T> create(Consumer<T> consumer) {
-    return new WorkRunnerActor<>(workRunnerFactory.get(), consumer);
+  public static ActorFactory immediateFactory() {
+    return new ActorFactory() {
+      @Override
+      public <T> Actor<T> create(Consumer<T> consumer) {
+        return new ImmediateActor<>(consumer);
+      }
+    };
   }
 }

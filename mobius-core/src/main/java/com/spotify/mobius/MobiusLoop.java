@@ -19,18 +19,22 @@
  */
 package com.spotify.mobius;
 
-import static com.spotify.mobius.internal_util.Preconditions.checkNotNull;
-
-import com.spotify.mobius.actors.WorkRunnerActor;
+import com.spotify.mobius.actors.Actor;
+import com.spotify.mobius.actors.ActorFactory;
 import com.spotify.mobius.disposables.Disposable;
 import com.spotify.mobius.functions.Consumer;
 import com.spotify.mobius.functions.Producer;
 import com.spotify.mobius.runners.WorkRunner;
+
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
+
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+
+import static com.spotify.mobius.internal_util.Preconditions.checkNotNull;
 
 /**
  * This is the main loop for Mobius.
@@ -40,8 +44,8 @@ import javax.annotation.Nullable;
  */
 public class MobiusLoop<M, E, F> implements Disposable {
 
-  @Nonnull private final WorkRunnerActor<E> eventDispatcher;
-  @Nonnull private final WorkRunnerActor<F> effectDispatcher;
+  @Nonnull private final Actor<E> eventDispatcher;
+  @Nonnull private final Actor<F> effectDispatcher;
 
   @Nonnull private final EventProcessor<M, E, F> eventProcessor;
   @Nonnull private final Connection<F> effectConsumer;
@@ -59,23 +63,23 @@ public class MobiusLoop<M, E, F> implements Disposable {
       MobiusStore<M, E, F> store,
       Connectable<F, E> effectHandler,
       EventSource<E> eventSource,
-      WorkRunner eventRunner,
-      WorkRunner effectRunner) {
+      ActorFactory eventActorFactory,
+      ActorFactory effectActorFactory) {
 
     return new MobiusLoop<>(
         new EventProcessor.Factory<>(checkNotNull(store)),
         checkNotNull(effectHandler),
         checkNotNull(eventSource),
-        checkNotNull(eventRunner),
-        checkNotNull(effectRunner));
+        checkNotNull(eventActorFactory),
+        checkNotNull(effectActorFactory));
   }
 
   private MobiusLoop(
       EventProcessor.Factory<M, E, F> eventProcessorFactory,
       Connectable<F, E> effectHandler,
       EventSource<E> eventSource,
-      WorkRunner eventRunner,
-      WorkRunner effectRunner) {
+      ActorFactory eventActorFactory,
+      ActorFactory effectActorFactory) {
 
     Consumer<E> onEventReceived =
         new Consumer<E>() {
@@ -110,8 +114,8 @@ public class MobiusLoop<M, E, F> implements Disposable {
           }
         };
 
-    this.eventDispatcher = new WorkRunnerActor<>(eventRunner, onEventReceived);
-    this.effectDispatcher = new WorkRunnerActor<>(effectRunner, onEffectReceived);
+    this.eventDispatcher = eventActorFactory.create(onEventReceived);
+    this.effectDispatcher = effectActorFactory.create(onEffectReceived);
 
     this.eventProcessor = eventProcessorFactory.create(effectDispatcher, onModelChanged);
 
@@ -126,13 +130,15 @@ public class MobiusLoop<M, E, F> implements Disposable {
     this.effectConsumer = effectHandler.connect(eventConsumer);
     this.eventSourceDisposable = eventSource.subscribe(eventConsumer);
 
-    eventRunner.post(
-        new Runnable() {
-          @Override
-          public void run() {
-            eventProcessor.init();
-          }
-        });
+    eventProcessor.init();
+  }
+
+  private boolean initialized;
+
+  synchronized void initialize() {
+      if (initialized) throw new IllegalStateException("already initialized");
+      initialized = true;
+      eventProcessor.init();
   }
 
   public void dispatchEvent(E event) {

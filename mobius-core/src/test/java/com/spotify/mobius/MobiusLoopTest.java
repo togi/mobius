@@ -24,10 +24,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 import com.google.common.util.concurrent.SettableFuture;
+import com.spotify.mobius.actors.ActorFactory;
+import com.spotify.mobius.actors.Actors;
+import com.spotify.mobius.actors.WorkRunnerActorFactory;
 import com.spotify.mobius.disposables.Disposable;
 import com.spotify.mobius.functions.Consumer;
 import com.spotify.mobius.runners.ExecutorServiceWorkRunner;
-import com.spotify.mobius.runners.ImmediateWorkRunner;
 import com.spotify.mobius.runners.WorkRunner;
 import com.spotify.mobius.test.RecordingModelObserver;
 import com.spotify.mobius.test.SimpleConnection;
@@ -45,9 +47,9 @@ public class MobiusLoopTest {
   private MobiusStore<String, TestEvent, TestEffect> mobiusStore;
   private Connectable<TestEffect, TestEvent> effectHandler;
 
-  private final WorkRunner immediateRunner = new ImmediateWorkRunner();
-  private final WorkRunner backgroundRunner =
-      new ExecutorServiceWorkRunner(Executors.newSingleThreadExecutor());
+  private final ActorFactory immediateActorFactory = Actors.immediateFactory();
+  private final ActorFactory backgroundActorFactory = new WorkRunnerActorFactory(() ->
+      new ExecutorServiceWorkRunner(Executors.newSingleThreadExecutor()));
 
   private EventSource<TestEvent> eventSource =
       new EventSource<TestEvent>() {
@@ -106,7 +108,7 @@ public class MobiusLoopTest {
               }
             };
 
-    setupWithEffects(effectHandler, immediateRunner);
+    setupWithEffects(effectHandler, immediateActorFactory);
   }
 
   @Test
@@ -150,7 +152,7 @@ public class MobiusLoopTest {
                 eventConsumer.accept(new TestEvent(effect.toString()));
               }
             },
-        immediateRunner);
+        immediateActorFactory);
 
     mobiusLoop.dispatchEvent(new EventWithSafeEffect("hi"));
 
@@ -174,7 +176,7 @@ public class MobiusLoopTest {
                 }
               }
             },
-        backgroundRunner);
+            backgroundActorFactory);
 
     mobiusLoop.dispatchEvent(new EventWithSafeEffect("1"));
     mobiusLoop.dispatchEvent(new TestEvent("2"));
@@ -209,7 +211,7 @@ public class MobiusLoopTest {
                 eventConsumer.accept(new TestEvent(effect.toString()));
               }
             },
-        new ExecutorServiceWorkRunner(Executors.newFixedThreadPool(2)));
+        new WorkRunnerActorFactory(() -> new ExecutorServiceWorkRunner(Executors.newFixedThreadPool(2))));
 
     // the effectHandler associated with "1" should never happen
     mobiusLoop.dispatchEvent(new EventWithSafeEffect("1"));
@@ -253,7 +255,7 @@ public class MobiusLoopTest {
                 eventConsumer.accept(new TestEvent(effect.toString()));
               }
             },
-        testWorkRunner);
+        new WorkRunnerActorFactory(() -> testWorkRunner));
 
     observer.waitForChange(100);
     testWorkRunner.runAll();
@@ -273,7 +275,7 @@ public class MobiusLoopTest {
 
     mobiusLoop =
         MobiusLoop.create(
-            mobiusStore, effectHandler, eventSource, immediateRunner, immediateRunner);
+            mobiusStore, effectHandler, eventSource, immediateActorFactory, immediateActorFactory);
 
     Disposable unregister = mobiusLoop.observe(observer);
 
@@ -290,7 +292,7 @@ public class MobiusLoopTest {
 
     mobiusLoop =
         MobiusLoop.create(
-            mobiusStore, effectHandler, eventSource, immediateRunner, immediateRunner);
+            mobiusStore, effectHandler, eventSource, immediateActorFactory, immediateActorFactory);
 
     observer = new RecordingModelObserver<>(); // to clear out the init from the previous setup
     mobiusLoop.observe(observer);
@@ -308,7 +310,7 @@ public class MobiusLoopTest {
   public void shouldThrowForEffectHandlerEventsAfterDispose() throws Exception {
     final FakeEffectHandler effectHandler = new FakeEffectHandler();
 
-    setupWithEffects(effectHandler, immediateRunner);
+    setupWithEffects(effectHandler, immediateActorFactory);
 
     effectHandler.emitEvent(new EventWithSafeEffect("good one"));
 
@@ -341,7 +343,7 @@ public class MobiusLoopTest {
             };
           }
         },
-        immediateRunner);
+        immediateActorFactory);
 
     // in this scenario, the init and the first event get processed before the observer
     // is connected, meaning the 'Iinit' state is never seen
@@ -367,7 +369,7 @@ public class MobiusLoopTest {
           }
         };
 
-    setupWithEffects(new FakeEffectHandler(), immediateRunner);
+    setupWithEffects(new FakeEffectHandler(), immediateActorFactory);
 
     // in this scenario, the init and the first event get processed before the observer
     // is connected, meaning the 'Firstinit' state is never seen
@@ -375,11 +377,11 @@ public class MobiusLoopTest {
   }
 
   private void setupWithEffects(
-      Connectable<TestEffect, TestEvent> effectHandler, WorkRunner effectRunner) {
+      Connectable<TestEffect, TestEvent> effectHandler, ActorFactory effectRunner) {
     observer = new RecordingModelObserver<>();
 
     mobiusLoop =
-        MobiusLoop.create(mobiusStore, effectHandler, eventSource, immediateRunner, effectRunner);
+        MobiusLoop.create(mobiusStore, effectHandler, eventSource, immediateActorFactory, effectRunner);
 
     mobiusLoop.observe(observer);
   }

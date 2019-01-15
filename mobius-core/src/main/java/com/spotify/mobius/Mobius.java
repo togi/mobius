@@ -21,6 +21,8 @@ package com.spotify.mobius;
 
 import static com.spotify.mobius.internal_util.Preconditions.checkNotNull;
 
+import com.spotify.mobius.actors.ActorFactory;
+import com.spotify.mobius.actors.WorkRunnerActorFactory;
 import com.spotify.mobius.disposables.Disposable;
 import com.spotify.mobius.functions.Consumer;
 import com.spotify.mobius.functions.Producer;
@@ -115,20 +117,20 @@ public final class Mobius {
         (Init<M, F>) NOOP_INIT,
         (EventSource<E>) NOOP_EVENT_SOURCE,
         (MobiusLoop.Logger<M, E, F>) NOOP_LOGGER,
-        new Producer<WorkRunner>() {
+        new WorkRunnerActorFactory(new Producer<WorkRunner>() {
           @Nonnull
           @Override
           public WorkRunner get() {
             return WorkRunners.from(Executors.newSingleThreadExecutor(Builder.THREAD_FACTORY));
           }
-        },
-        new Producer<WorkRunner>() {
+        }),
+        new WorkRunnerActorFactory(new Producer<WorkRunner>() {
           @Nonnull
           @Override
           public WorkRunner get() {
             return WorkRunners.from(Executors.newCachedThreadPool(Builder.THREAD_FACTORY));
           }
-        });
+        }));
   }
 
   /**
@@ -164,8 +166,8 @@ public final class Mobius {
     private final Connectable<F, E> effectHandler;
     private final Init<M, F> init;
     private final EventSource<E> eventSource;
-    private final Producer<WorkRunner> eventRunner;
-    private final Producer<WorkRunner> effectRunner;
+    private final ActorFactory eventActorFactory;
+    private final ActorFactory effectActorFactory;
     private final MobiusLoop.Logger<M, E, F> logger;
 
     private Builder(
@@ -174,14 +176,14 @@ public final class Mobius {
         Init<M, F> init,
         EventSource<E> eventSource,
         MobiusLoop.Logger<M, E, F> logger,
-        Producer<WorkRunner> eventRunner,
-        Producer<WorkRunner> effectRunner) {
+        ActorFactory eventActorFactory,
+        ActorFactory effectActorFactory) {
       this.update = checkNotNull(update);
       this.effectHandler = checkNotNull(effectHandler);
       this.init = checkNotNull(init);
       this.eventSource = checkNotNull(eventSource);
-      this.eventRunner = checkNotNull(eventRunner);
-      this.effectRunner = checkNotNull(effectRunner);
+      this.eventActorFactory = checkNotNull(eventActorFactory);
+      this.effectActorFactory = checkNotNull(effectActorFactory);
       this.logger = checkNotNull(logger);
     }
 
@@ -189,14 +191,14 @@ public final class Mobius {
     @Nonnull
     public MobiusLoop.Builder<M, E, F> init(Init<M, F> init) {
       return new Builder<>(
-          update, effectHandler, init, eventSource, logger, eventRunner, effectRunner);
+          update, effectHandler, init, eventSource, logger, eventActorFactory, effectActorFactory);
     }
 
     @Override
     @Nonnull
     public MobiusLoop.Builder<M, E, F> eventSource(EventSource<E> eventSource) {
       return new Builder<>(
-          update, effectHandler, init, eventSource, logger, eventRunner, effectRunner);
+          update, effectHandler, init, eventSource, logger, eventActorFactory, effectActorFactory);
     }
 
     @Nonnull
@@ -205,28 +207,28 @@ public final class Mobius {
         EventSource<E> eventSource, EventSource<E>... eventSources) {
       EventSource<E> mergedSource = MergedEventSource.from(eventSource, eventSources);
       return new Builder<>(
-          update, effectHandler, init, mergedSource, logger, eventRunner, effectRunner);
+          update, effectHandler, init, mergedSource, logger, eventActorFactory, effectActorFactory);
     }
 
     @Override
     @Nonnull
     public MobiusLoop.Builder<M, E, F> logger(MobiusLoop.Logger<M, E, F> logger) {
       return new Builder<>(
-          update, effectHandler, init, eventSource, logger, eventRunner, effectRunner);
+          update, effectHandler, init, eventSource, logger, eventActorFactory, effectActorFactory);
     }
 
     @Override
     @Nonnull
     public MobiusLoop.Builder<M, E, F> eventRunner(Producer<WorkRunner> eventRunner) {
       return new Builder<>(
-          update, effectHandler, init, eventSource, logger, eventRunner, effectRunner);
+          update, effectHandler, init, eventSource, logger, new WorkRunnerActorFactory(eventRunner), effectActorFactory);
     }
 
     @Override
     @Nonnull
     public MobiusLoop.Builder<M, E, F> effectRunner(Producer<WorkRunner> effectRunner) {
       return new Builder<>(
-          update, effectHandler, init, eventSource, logger, eventRunner, effectRunner);
+          update, effectHandler, init, eventSource, logger, eventActorFactory, new WorkRunnerActorFactory(effectRunner));
     }
 
     @Override
@@ -239,8 +241,8 @@ public final class Mobius {
           MobiusStore.create(loggingInit, loggingUpdate, checkNotNull(startModel)),
           effectHandler,
           eventSource,
-          checkNotNull(eventRunner.get()),
-          checkNotNull(effectRunner.get()));
+          checkNotNull(eventActorFactory),
+          checkNotNull(effectActorFactory));
     }
 
     private static class MyThreadFactory implements ThreadFactory {
