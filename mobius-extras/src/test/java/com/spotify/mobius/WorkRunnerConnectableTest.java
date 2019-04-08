@@ -5,9 +5,9 @@ import static org.junit.Assert.assertTrue;
 
 import com.spotify.mobius.disposables.Disposable;
 import com.spotify.mobius.functions.Consumer;
+import com.spotify.mobius.runners.TestWorkRunner;
 import com.spotify.mobius.test.RecordingConsumer;
 import com.spotify.mobius.test.SimpleConnection;
-import com.spotify.mobius.test.TestWorkRunner;
 import javax.annotation.Nonnull;
 import org.junit.After;
 import org.junit.Before;

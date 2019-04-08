@@ -11,6 +11,7 @@ repositories {
 
 dependencies {
     api project(':mobius-core')
+    api project(':mobius-extras')
 
     implementation "org.slf4j:slf4j-api:${versions.slf4j}"
     implementation "com.google.code.findbugs:jsr305:${versions.jsr305}"

@@ -10,6 +10,7 @@ configurations {
 dependencies {
     api "io.reactivex.rxjava2:rxjava:${versions.rxJava2}"
     api project(':mobius-core')
+    api project(':mobius-extras')
 
     implementation "com.google.code.findbugs:jsr305:${versions.jsr305}"
 

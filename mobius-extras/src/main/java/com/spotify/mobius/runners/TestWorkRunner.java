@@ -17,9 +17,8 @@
  * limitations under the License.
  * -/-/-
  */
-package com.spotify.mobius.test;
+package com.spotify.mobius.runners;
 
-import com.spotify.mobius.runners.WorkRunner;
 import java.util.LinkedList;
 import java.util.Queue;
 

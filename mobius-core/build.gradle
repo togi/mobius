@@ -14,6 +14,7 @@ dependencies {
     apt "com.google.auto.value:auto-value:${versions.autoValue}"
 
     testImplementation project(':mobius-test')
+    testImplementation project(':mobius-extras')
     testImplementation "junit:junit:${versions.junit}"
     testImplementation "ch.qos.logback:logback-classic:${versions.logback}"
     testImplementation "com.google.guava:guava:${versions.guava}"

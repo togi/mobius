@@ -31,9 +31,6 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 
 import com.spotify.mobius.functions.Consumer;
-import com.spotify.mobius.runners.WorkRunner;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.Before;
@@ -437,28 +434,6 @@ public class MobiusLoopControllerTest {
       underTest.start();
 
       verify(renderer, never()).accept("init!");
-    }
-  }
-
-  private static class KnownThreadWorkRunner implements WorkRunner {
-    private final ExecutorService executorService = Executors.newSingleThreadExecutor();
-    private volatile Thread workerThread = null;
-
-    @Override
-    public void post(final Runnable runnable) {
-      executorService.submit(
-          new Runnable() {
-            @Override
-            public void run() {
-              workerThread = Thread.currentThread();
-              runnable.run();
-            }
-          });
-    }
-
-    @Override
-    public void dispose() {
-      executorService.shutdown();
     }
   }
 }
