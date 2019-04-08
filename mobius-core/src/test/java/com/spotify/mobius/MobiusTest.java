@@ -98,27 +98,6 @@ public class MobiusTest {
   }
 
   @Test
-  public void shouldPermitUsingCustomEffectRunner() throws Exception {
-    TestableWorkRunner runner = new TestableWorkRunner();
-    loop = Mobius.loop(UPDATE, HANDLER).effectRunner(() -> runner).startFrom(MY_MODEL);
-
-    loop.dispatchEvent(3);
-
-    await().atMost(Duration.ONE_SECOND).until(() -> runner.runCounter.get() == 1);
-  }
-
-  @Test
-  public void shouldPermitUsingCustomEventRunner() throws Exception {
-    TestableWorkRunner runner = new TestableWorkRunner();
-    loop = Mobius.loop(UPDATE, HANDLER).eventRunner(() -> runner).startFrom(MY_MODEL);
-
-    loop.dispatchEvent(3);
-
-    // 2 because the initial model dispatch is run on the event runner
-    await().atMost(Duration.ONE_SECOND).until(() -> runner.runCounter.get() == 2);
-  }
-
-  @Test
   public void shouldPermitUsingEventSource() throws Exception {
     TestEventSource eventSource = new TestEventSource();
 

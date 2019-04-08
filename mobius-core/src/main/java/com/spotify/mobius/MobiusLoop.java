@@ -55,26 +55,21 @@ public class MobiusLoop<M, E, F> implements Disposable {
   private volatile boolean disposed;
 
   static <M, E, F> MobiusLoop<M, E, F> create(
-      MobiusStore<M, E, F> store,
-      Connectable<F, E> effectHandler,
-      EventSource<E> eventSource,
-      WorkRunner eventRunner,
-      WorkRunner effectRunner) {
+      MobiusStore<M, E, F> store, Connectable<F, E> effectHandler, EventSource<E> eventSource) {
 
-    return new MobiusLoop<>(
-        new EventProcessor.Factory<>(checkNotNull(store)),
-        checkNotNull(effectHandler),
-        checkNotNull(eventSource),
-        checkNotNull(eventRunner),
-        checkNotNull(effectRunner));
+    MobiusLoop<M, E, F> loop =
+        new MobiusLoop<>(
+            new EventProcessor.Factory<>(checkNotNull(store)),
+            checkNotNull(effectHandler),
+            checkNotNull(eventSource));
+
+    return loop;
   }
 
   private MobiusLoop(
       EventProcessor.Factory<M, E, F> eventProcessorFactory,
       Connectable<F, E> effectHandler,
-      EventSource<E> eventSource,
-      WorkRunner eventRunner,
-      WorkRunner effectRunner) {
+      EventSource<E> eventSource) {
 
     Consumer<E> onEventReceived =
         new Consumer<E>() {
@@ -109,8 +104,8 @@ public class MobiusLoop<M, E, F> implements Disposable {
           }
         };
 
-    this.eventDispatcher = new MessageDispatcher<>(eventRunner, onEventReceived);
-    this.effectDispatcher = new MessageDispatcher<>(effectRunner, onEffectReceived);
+    this.eventDispatcher = new MessageDispatcher<>(onEventReceived);
+    this.effectDispatcher = new MessageDispatcher<>(onEffectReceived);
 
     this.eventProcessor = eventProcessorFactory.create(effectDispatcher, onModelChanged);
 
@@ -125,13 +120,7 @@ public class MobiusLoop<M, E, F> implements Disposable {
     this.effectConsumer = effectHandler.connect(eventConsumer);
     this.eventSourceDisposable = eventSource.subscribe(eventConsumer);
 
-    eventRunner.post(
-        new Runnable() {
-          @Override
-          public void run() {
-            eventProcessor.init();
-          }
-        });
+    this.eventProcessor.init();
   }
 
   public void dispatchEvent(E event) {
@@ -197,10 +186,6 @@ public class MobiusLoop<M, E, F> implements Disposable {
     // Stop the event source and effect handler.
     eventSourceDisposable.dispose();
     effectConsumer.dispose();
-
-    // Finally clean up the dispatchers that now no longer are needed.
-    eventDispatcher.dispose();
-    effectDispatcher.dispose();
 
     disposed = true;
   }

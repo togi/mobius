@@ -238,9 +238,7 @@ public final class Mobius {
       return MobiusLoop.create(
           MobiusStore.create(loggingInit, loggingUpdate, checkNotNull(startModel)),
           effectHandler,
-          eventSource,
-          checkNotNull(eventRunner.get()),
-          checkNotNull(effectRunner.get()));
+          eventSource);
     }
 
     private static class MyThreadFactory implements ThreadFactory {

@@ -24,14 +24,13 @@ import static com.spotify.mobius.internal_util.Throwables.propagate;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
 
 import com.google.common.util.concurrent.SettableFuture;
 import com.spotify.mobius.disposables.Disposable;
 import com.spotify.mobius.functions.Consumer;
 import com.spotify.mobius.runners.ExecutorServiceWorkRunner;
-import com.spotify.mobius.runners.ImmediateWorkRunner;
 import com.spotify.mobius.runners.WorkRunner;
+import com.spotify.mobius.runners.WorkRunners;
 import com.spotify.mobius.test.RecordingConsumer;
 import com.spotify.mobius.test.RecordingModelObserver;
 import com.spotify.mobius.test.SimpleConnection;
@@ -53,7 +52,6 @@ public class MobiusLoopTest {
   private MobiusStore<String, TestEvent, TestEffect> mobiusStore;
   private Connectable<TestEffect, TestEvent> effectHandler;
 
-  private final WorkRunner immediateRunner = new ImmediateWorkRunner();
   private WorkRunner backgroundRunner;
 
   private EventSource<TestEvent> eventSource =
@@ -118,7 +116,7 @@ public class MobiusLoopTest {
               }
             };
 
-    setupWithEffects(effectHandler, immediateRunner);
+    setupWithEffects(effectHandler);
   }
 
   @After
@@ -166,8 +164,7 @@ public class MobiusLoopTest {
               public void accept(TestEffect effect) {
                 eventConsumer.accept(new TestEvent(effect.toString()));
               }
-            },
-        immediateRunner);
+            });
 
     mobiusLoop.dispatchEvent(new EventWithSafeEffect("hi"));
 
@@ -183,15 +180,17 @@ public class MobiusLoopTest {
             new SimpleConnection<TestEffect>() {
               @Override
               public void accept(TestEffect effect) {
-                try {
-                  eventConsumer.accept(future.get());
+                backgroundRunner.post(
+                    () -> {
+                      try {
+                        eventConsumer.accept(future.get());
 
-                } catch (InterruptedException | ExecutionException e) {
-                  e.printStackTrace();
-                }
+                      } catch (InterruptedException | ExecutionException e) {
+                        e.printStackTrace();
+                      }
+                    });
               }
-            },
-        backgroundRunner);
+            });
 
     mobiusLoop.dispatchEvent(new EventWithSafeEffect("1"));
     mobiusLoop.dispatchEvent(new TestEvent("2"));
@@ -206,27 +205,31 @@ public class MobiusLoopTest {
 
   @Test
   public void shouldSupportHandlingEffectsWhenOneEffectNeverCompletes() throws Exception {
+    WorkRunner runner = WorkRunners.fixedThreadPool(2);
+
     setupWithEffects(
         eventConsumer ->
             new SimpleConnection<TestEffect>() {
               @Override
               public void accept(TestEffect effect) {
-                if (effect instanceof SafeEffect) {
-                  if (((SafeEffect) effect).id.equals("1")) {
-                    try {
-                      // Rough approximation of waiting infinite amount of time.
-                      Thread.sleep(2000);
-                    } catch (InterruptedException e) {
-                      // ignored.
-                    }
-                    return;
-                  }
-                }
+                runner.post(
+                    () -> {
+                      if (effect instanceof SafeEffect) {
+                        if (((SafeEffect) effect).id.equals("1")) {
+                          try {
+                            // Rough approximation of waiting infinite amount of time.
+                            Thread.sleep(2000);
+                          } catch (InterruptedException e) {
+                            // ignored.
+                          }
+                          return;
+                        }
+                      }
 
-                eventConsumer.accept(new TestEvent(effect.toString()));
+                      eventConsumer.accept(new TestEvent(effect.toString()));
+                    });
               }
-            },
-        new ExecutorServiceWorkRunner(Executors.newFixedThreadPool(2)));
+            });
 
     // the effectHandler associated with "1" should never happen
     mobiusLoop.dispatchEvent(new EventWithSafeEffect("1"));
@@ -234,6 +237,8 @@ public class MobiusLoopTest {
     mobiusLoop.dispatchEvent(new EventWithSafeEffect("3"));
 
     await().atMost(Duration.FIVE_SECONDS).until(() -> observer.valueCount() >= 5);
+
+    runner.dispose();
 
     observer.assertStates(
         "init", "init->1", "init->1->2", "init->1->2->3", "init->1->2->3->effect3");
@@ -267,10 +272,9 @@ public class MobiusLoopTest {
             new SimpleConnection<TestEffect>() {
               @Override
               public void accept(TestEffect effect) {
-                eventConsumer.accept(new TestEvent(effect.toString()));
+                backgroundRunner.post(() -> eventConsumer.accept(new TestEvent(effect.toString())));
               }
-            },
-        testWorkRunner);
+            });
 
     observer.waitForChange(100);
     testWorkRunner.runAll();
@@ -285,26 +289,10 @@ public class MobiusLoopTest {
   }
 
   @Test
-  public void disposingTheLoopDisposesTheWorkRunners() throws Exception {
-    TestWorkRunner eventRunner = new TestWorkRunner();
-    TestWorkRunner effectRunner = new TestWorkRunner();
-
-    mobiusLoop =
-        MobiusLoop.create(mobiusStore, effectHandler, eventSource, eventRunner, effectRunner);
-
-    mobiusLoop.dispose();
-
-    assertTrue("expecting event WorkRunner to be disposed", eventRunner.isDisposed());
-    assertTrue("expecting effect WorkRunner to be disposed", effectRunner.isDisposed());
-  }
-
-  @Test
   public void shouldSupportUnregisteringObserver() throws Exception {
     observer = new RecordingModelObserver<>();
 
-    mobiusLoop =
-        MobiusLoop.create(
-            mobiusStore, effectHandler, eventSource, immediateRunner, immediateRunner);
+    mobiusLoop = MobiusLoop.create(mobiusStore, effectHandler, eventSource);
 
     Disposable unregister = mobiusLoop.observe(observer);
 
@@ -319,9 +307,7 @@ public class MobiusLoopTest {
   public void shouldThrowForEventSourceEventsAfterDispose() throws Exception {
     FakeEventSource<TestEvent> eventSource = new FakeEventSource<>();
 
-    mobiusLoop =
-        MobiusLoop.create(
-            mobiusStore, effectHandler, eventSource, immediateRunner, immediateRunner);
+    mobiusLoop = MobiusLoop.create(mobiusStore, effectHandler, eventSource);
 
     observer = new RecordingModelObserver<>(); // to clear out the init from the previous setup
     mobiusLoop.observe(observer);
@@ -339,7 +325,7 @@ public class MobiusLoopTest {
   public void shouldThrowForEffectHandlerEventsAfterDispose() throws Exception {
     final FakeEffectHandler effectHandler = new FakeEffectHandler();
 
-    setupWithEffects(effectHandler, immediateRunner);
+    setupWithEffects(effectHandler);
 
     effectHandler.emitEvent(new EventWithSafeEffect("good one"));
 
@@ -371,8 +357,7 @@ public class MobiusLoopTest {
               }
             };
           }
-        },
-        immediateRunner);
+        });
 
     // in this scenario, the init and the first event get processed before the observer
     // is connected, meaning the 'Iinit' state is never seen
@@ -398,7 +383,7 @@ public class MobiusLoopTest {
           }
         };
 
-    setupWithEffects(new FakeEffectHandler(), immediateRunner);
+    setupWithEffects(new FakeEffectHandler());
 
     // in this scenario, the init and the first event get processed before the observer
     // is connected, meaning the 'Firstinit' state is never seen
@@ -447,114 +432,6 @@ public class MobiusLoopTest {
   }
 
   @Test
-  public void disposingLoopWhileInitIsRunningDoesNotEmitNewState() throws Exception {
-    // Model changes emitted from the init function during dispose should be ignored.
-
-    // This test will start a loop and wait until (using the initRequested semaphore) the runnable
-    // that runs Init is posted to the event runner. The init function will then be blocked using
-    // the initLock semaphore. At this point, we proceed to add the observer then dispose of the
-    // loop. The loop is setup with an event source that returns a disposable that will unlock
-    // init when it is disposed. So when we dispose of the loop, that will unblock init as part of
-    // the disposal procedure. The test then waits until the init runnable has completed running.
-    // Completion of the init runnable means:
-    // a) init has returned a First
-    // b) that first has been unpacked and the model has been set on the store
-    // c) that model has been passed back to the loop to be emitted to any state observers
-    // Since we're in the process of disposing of the loop, we should see no states in our observer
-    observer = new RecordingModelObserver<>();
-    Semaphore initLock = new Semaphore(0);
-    Semaphore initRequested = new Semaphore(0);
-    Semaphore initFinished = new Semaphore(0);
-
-    final Update<String, TestEvent, TestEffect> update = (model, event) -> Next.noChange();
-    final MobiusLoop.Builder<String, TestEvent, TestEffect> builder =
-        Mobius.loop(update, effectHandler)
-            .init(
-                m -> {
-                  initLock.acquireUninterruptibly();
-                  return First.first(m);
-                })
-            .eventSource(c -> initLock::release)
-            .eventRunner(
-                () ->
-                    new WorkRunner() {
-                      @Override
-                      public void post(Runnable runnable) {
-                        backgroundRunner.post(
-                            () -> {
-                              initRequested.release();
-                              runnable.run();
-                              initFinished.release();
-                            });
-                      }
-
-                      @Override
-                      public void dispose() {
-                        backgroundRunner.dispose();
-                      }
-                    });
-
-    mobiusLoop = builder.startFrom("foo");
-    initRequested.acquireUninterruptibly();
-    mobiusLoop.observe(observer);
-    mobiusLoop.dispose();
-    initFinished.acquireUninterruptibly(1);
-    observer.assertStates();
-  }
-
-  @Test
-  public void disposingLoopBeforeInitRunsIgnoresModelFromInit() throws Exception {
-    // Model changes emitted from the init function after dispose should be ignored.
-    // This test sets up the following scenario:
-    // 1. The loop is created and initialized on a separate thread
-    // 2. The loop is configured with an event runner that will block before executing the init function
-    // 3. The test will then dispose of the loop
-    // 4. Once the loop is disposed, the test will proceed to unblock the initialization runnable
-    // 5. Once the initialization is completed, the test will proceed to examine the observer
-
-    observer = new RecordingModelObserver<>();
-
-    Semaphore awaitInitExecutionRequest = new Semaphore(0);
-    Semaphore blockInitExecution = new Semaphore(0);
-    Semaphore initExecutionCompleted = new Semaphore(0);
-
-    final Update<String, TestEvent, TestEffect> update = (model, event) -> Next.noChange();
-    final MobiusLoop.Builder<String, TestEvent, TestEffect> builder =
-        Mobius.loop(update, effectHandler)
-            .eventRunner(
-                () ->
-                    new WorkRunner() {
-                      @Override
-                      public void post(Runnable runnable) {
-                        backgroundRunner.post(
-                            () -> {
-                              awaitInitExecutionRequest.release();
-                              blockInitExecution.acquireUninterruptibly();
-                              runnable.run();
-                              initExecutionCompleted.release();
-                            });
-                      }
-
-                      @Override
-                      public void dispose() {
-                        backgroundRunner.dispose();
-                      }
-                    });
-
-    new Thread(() -> mobiusLoop = builder.startFrom("foo")).start();
-
-    awaitInitExecutionRequest.acquireUninterruptibly();
-
-    mobiusLoop.observe(observer);
-    mobiusLoop.dispose();
-
-    blockInitExecution.release();
-    initExecutionCompleted.acquireUninterruptibly();
-
-    observer.assertStates();
-  }
-
-  @Test
   public void modelsFromUpdateDuringDisposeAreIgnored() throws Exception {
     // Model changes emitted from the update function during dispose should be ignored.
 
@@ -568,14 +445,13 @@ public class MobiusLoopTest {
         };
 
     final MobiusLoop.Builder<String, TestEvent, TestEffect> builder =
-        Mobius.loop(update, effectHandler)
-            .eventRunner(
-                () -> InitImmediatelyThenUpdateConcurrentlyWorkRunner.create(backgroundRunner));
+        Mobius.loop(update, effectHandler);
 
     mobiusLoop = builder.startFrom("foo");
     mobiusLoop.observe(observer);
 
-    mobiusLoop.dispatchEvent(new TestEvent("bar"));
+    backgroundRunner.post(() -> mobiusLoop.dispatchEvent(new TestEvent("bar")));
+
     releaseLockAfterDelay(lock, 30);
     mobiusLoop.dispose();
 
@@ -599,19 +475,18 @@ public class MobiusLoopTest {
 
     mobiusLoop = builder.startFrom("foo");
 
-    mobiusLoop.dispatchEvent(new TestEvent("bar"));
+    backgroundRunner.post(() -> mobiusLoop.dispatchEvent(new TestEvent("bar")));
+
     releaseLockAfterDelay(lock, 30);
     mobiusLoop.dispose();
 
     effectObserver.assertValues();
   }
 
-  private void setupWithEffects(
-      Connectable<TestEffect, TestEvent> effectHandler, WorkRunner effectRunner) {
+  private void setupWithEffects(Connectable<TestEffect, TestEvent> effectHandler) {
     observer = new RecordingModelObserver<>();
 
-    mobiusLoop =
-        MobiusLoop.create(mobiusStore, effectHandler, eventSource, immediateRunner, effectRunner);
+    mobiusLoop = MobiusLoop.create(mobiusStore, effectHandler, eventSource);
 
     mobiusLoop.observe(observer);
   }
@@ -814,36 +689,6 @@ public class MobiusLoopTest {
           }
         }
       }
-    }
-  }
-
-  private static class InitImmediatelyThenUpdateConcurrentlyWorkRunner implements WorkRunner {
-    private final WorkRunner delegate;
-
-    private boolean ranOnce;
-
-    private InitImmediatelyThenUpdateConcurrentlyWorkRunner(WorkRunner delegate) {
-      this.delegate = delegate;
-    }
-
-    public static WorkRunner create(WorkRunner eventRunner) {
-      return new InitImmediatelyThenUpdateConcurrentlyWorkRunner(eventRunner);
-    }
-
-    @Override
-    public synchronized void post(Runnable runnable) {
-      if (ranOnce) {
-        delegate.post(runnable);
-        return;
-      }
-
-      ranOnce = true;
-      runnable.run();
-    }
-
-    @Override
-    public void dispose() {
-      delegate.dispose();
     }
   }
 }

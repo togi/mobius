@@ -21,57 +21,41 @@ package com.spotify.mobius;
 
 import static com.spotify.mobius.internal_util.Preconditions.checkNotNull;
 
-import com.spotify.mobius.disposables.Disposable;
 import com.spotify.mobius.functions.Consumer;
-import com.spotify.mobius.runners.WorkRunner;
 import javax.annotation.Nonnull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Dispatches messages to a given runner.
+ * Dispatches messages to a given consumer.
  *
  * @param <M> message type (typically a model, event, or effect descriptor type)
  */
-class MessageDispatcher<M> implements Consumer<M>, Disposable {
+class MessageDispatcher<M> implements Consumer<M> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(MessageDispatcher.class);
 
-  @Nonnull private final WorkRunner runner;
   @Nonnull private final Consumer<M> consumer;
 
   private volatile boolean disabled = false;
 
-  MessageDispatcher(WorkRunner runner, Consumer<M> consumer) {
-    this.runner = checkNotNull(runner);
+  MessageDispatcher(Consumer<M> consumer) {
     this.consumer = checkNotNull(consumer);
   }
 
   @Override
   public void accept(final M message) {
-    runner.post(
-        new Runnable() {
-          @Override
-          public void run() {
-            if (disabled) {
-              LOGGER.warn("Message ignored because the dispatcher is disabled: {}", message);
+    if (disabled) {
+      LOGGER.warn("Message ignored because the dispatcher is disabled: {}", message);
 
-            } else {
-              try {
-                consumer.accept(message);
+    } else {
+      try {
+        consumer.accept(message);
 
-              } catch (Throwable throwable) {
-                LOGGER.error(
-                    "Consumer threw an exception when accepting message: {}", message, throwable);
-              }
-            }
-          }
-        });
-  }
-
-  @Override
-  public void dispose() {
-    runner.dispose();
+      } catch (Throwable throwable) {
+        LOGGER.error("Consumer threw an exception when accepting message: {}", message, throwable);
+      }
+    }
   }
 
   void disable() {
