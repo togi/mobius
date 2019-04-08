@@ -27,7 +27,6 @@ import static org.junit.Assert.assertThat;
 
 import com.spotify.mobius.disposables.Disposable;
 import com.spotify.mobius.functions.Consumer;
-import com.spotify.mobius.runners.ImmediateWorkRunner;
 import com.spotify.mobius.runners.WorkRunner;
 import com.spotify.mobius.test.SimpleConnection;
 import java.util.ArrayList;
@@ -112,12 +111,7 @@ public class MobiusTest {
   public void shouldPermitUsingCustomLogger() throws Exception {
     TestLogger logger = new TestLogger();
 
-    loop =
-        Mobius.loop(UPDATE, HANDLER)
-            .logger(logger)
-            .eventRunner(ImmediateWorkRunner::new)
-            .effectRunner(ImmediateWorkRunner::new)
-            .startFrom(MY_MODEL);
+    loop = Mobius.loop(UPDATE, HANDLER).logger(logger).startFrom(MY_MODEL);
 
     loop.dispatchEvent(7);
 

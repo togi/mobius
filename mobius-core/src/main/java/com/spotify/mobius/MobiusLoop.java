@@ -23,8 +23,6 @@ import static com.spotify.mobius.internal_util.Preconditions.checkNotNull;
 
 import com.spotify.mobius.disposables.Disposable;
 import com.spotify.mobius.functions.Consumer;
-import com.spotify.mobius.functions.Producer;
-import com.spotify.mobius.runners.WorkRunner;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
@@ -229,20 +227,6 @@ public class MobiusLoop<M, E, F> implements Disposable {
      */
     @Nonnull
     Builder<M, E, F> logger(Logger<M, E, F> logger);
-
-    /**
-     * @return a new {@link Builder} with the supplied event runner, and the same values as the
-     *     current one for the other fields.
-     */
-    @Nonnull
-    Builder<M, E, F> eventRunner(Producer<WorkRunner> eventRunner);
-
-    /**
-     * @return a new {@link Builder} with the supplied effect runner, and the same values as the
-     *     current one for the other fields.
-     */
-    @Nonnull
-    Builder<M, E, F> effectRunner(Producer<WorkRunner> effectRunner);
   }
 
   public interface Factory<M, E, F> {

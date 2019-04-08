@@ -23,13 +23,8 @@ import static com.spotify.mobius.internal_util.Preconditions.checkNotNull;
 
 import com.spotify.mobius.disposables.Disposable;
 import com.spotify.mobius.functions.Consumer;
-import com.spotify.mobius.functions.Producer;
 import com.spotify.mobius.runners.WorkRunner;
 import com.spotify.mobius.runners.WorkRunners;
-import java.util.Locale;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.atomic.AtomicLong;
 import javax.annotation.Nonnull;
 
 public final class Mobius {
@@ -114,21 +109,7 @@ public final class Mobius {
         effectHandler,
         (Init<M, F>) NOOP_INIT,
         (EventSource<E>) NOOP_EVENT_SOURCE,
-        (MobiusLoop.Logger<M, E, F>) NOOP_LOGGER,
-        new Producer<WorkRunner>() {
-          @Nonnull
-          @Override
-          public WorkRunner get() {
-            return WorkRunners.from(Executors.newSingleThreadExecutor(Builder.THREAD_FACTORY));
-          }
-        },
-        new Producer<WorkRunner>() {
-          @Nonnull
-          @Override
-          public WorkRunner get() {
-            return WorkRunners.from(Executors.newCachedThreadPool(Builder.THREAD_FACTORY));
-          }
-        });
+        (MobiusLoop.Logger<M, E, F>) NOOP_LOGGER);
   }
 
   /**
@@ -158,14 +139,10 @@ public final class Mobius {
 
   private static final class Builder<M, E, F> implements MobiusLoop.Builder<M, E, F> {
 
-    private static final MyThreadFactory THREAD_FACTORY = new MyThreadFactory();
-
     private final Update<M, E, F> update;
     private final Connectable<F, E> effectHandler;
     private final Init<M, F> init;
     private final EventSource<E> eventSource;
-    private final Producer<WorkRunner> eventRunner;
-    private final Producer<WorkRunner> effectRunner;
     private final MobiusLoop.Logger<M, E, F> logger;
 
     private Builder(
@@ -173,30 +150,24 @@ public final class Mobius {
         Connectable<F, E> effectHandler,
         Init<M, F> init,
         EventSource<E> eventSource,
-        MobiusLoop.Logger<M, E, F> logger,
-        Producer<WorkRunner> eventRunner,
-        Producer<WorkRunner> effectRunner) {
+        MobiusLoop.Logger<M, E, F> logger) {
       this.update = checkNotNull(update);
       this.effectHandler = checkNotNull(effectHandler);
       this.init = checkNotNull(init);
       this.eventSource = checkNotNull(eventSource);
-      this.eventRunner = checkNotNull(eventRunner);
-      this.effectRunner = checkNotNull(effectRunner);
       this.logger = checkNotNull(logger);
     }
 
     @Override
     @Nonnull
     public MobiusLoop.Builder<M, E, F> init(Init<M, F> init) {
-      return new Builder<>(
-          update, effectHandler, init, eventSource, logger, eventRunner, effectRunner);
+      return new Builder<>(update, effectHandler, init, eventSource, logger);
     }
 
     @Override
     @Nonnull
     public MobiusLoop.Builder<M, E, F> eventSource(EventSource<E> eventSource) {
-      return new Builder<>(
-          update, effectHandler, init, eventSource, logger, eventRunner, effectRunner);
+      return new Builder<>(update, effectHandler, init, eventSource, logger);
     }
 
     @Nonnull
@@ -204,29 +175,13 @@ public final class Mobius {
     public MobiusLoop.Builder<M, E, F> eventSources(
         EventSource<E> eventSource, EventSource<E>... eventSources) {
       EventSource<E> mergedSource = MergedEventSource.from(eventSource, eventSources);
-      return new Builder<>(
-          update, effectHandler, init, mergedSource, logger, eventRunner, effectRunner);
+      return new Builder<>(update, effectHandler, init, mergedSource, logger);
     }
 
     @Override
     @Nonnull
     public MobiusLoop.Builder<M, E, F> logger(MobiusLoop.Logger<M, E, F> logger) {
-      return new Builder<>(
-          update, effectHandler, init, eventSource, logger, eventRunner, effectRunner);
-    }
-
-    @Override
-    @Nonnull
-    public MobiusLoop.Builder<M, E, F> eventRunner(Producer<WorkRunner> eventRunner) {
-      return new Builder<>(
-          update, effectHandler, init, eventSource, logger, eventRunner, effectRunner);
-    }
-
-    @Override
-    @Nonnull
-    public MobiusLoop.Builder<M, E, F> effectRunner(Producer<WorkRunner> effectRunner) {
-      return new Builder<>(
-          update, effectHandler, init, eventSource, logger, eventRunner, effectRunner);
+      return new Builder<>(update, effectHandler, init, eventSource, logger);
     }
 
     @Override
@@ -239,21 +194,6 @@ public final class Mobius {
           MobiusStore.create(loggingInit, loggingUpdate, checkNotNull(startModel)),
           effectHandler,
           eventSource);
-    }
-
-    private static class MyThreadFactory implements ThreadFactory {
-
-      private static final AtomicLong threadCount = new AtomicLong(0);
-
-      @Override
-      public Thread newThread(Runnable runnable) {
-        Thread thread = Executors.defaultThreadFactory().newThread(checkNotNull(runnable));
-
-        thread.setName(
-            String.format(Locale.ENGLISH, "mobius-thread-%d", threadCount.incrementAndGet()));
-
-        return thread;
-      }
     }
   }
 }
