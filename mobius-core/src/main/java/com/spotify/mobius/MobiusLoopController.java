@@ -22,7 +22,6 @@ package com.spotify.mobius;
 import static com.spotify.mobius.internal_util.Preconditions.checkNotNull;
 
 import com.spotify.mobius.functions.Consumer;
-import com.spotify.mobius.runners.WorkRunner;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
@@ -31,16 +30,13 @@ class MobiusLoopController<M, E, F>
 
   private final MobiusLoop.Factory<M, E, F> loopFactory;
   private final M defaultModel;
-  private final WorkRunner mainThreadRunner;
 
   private ControllerStateBase<M, E> currentState;
 
-  MobiusLoopController(
-      MobiusLoop.Factory<M, E, F> loopFactory, M defaultModel, WorkRunner mainThreadRunner) {
+  MobiusLoopController(MobiusLoop.Factory<M, E, F> loopFactory, M defaultModel) {
 
     this.loopFactory = checkNotNull(loopFactory);
     this.defaultModel = checkNotNull(defaultModel);
-    this.mainThreadRunner = checkNotNull(mainThreadRunner);
     goToStateInit(defaultModel);
   }
 
@@ -90,13 +86,7 @@ class MobiusLoopController<M, E, F>
   }
 
   public void postUpdateView(final M model) {
-    mainThreadRunner.post(
-        new Runnable() {
-          @Override
-          public void run() {
-            updateView(model);
-          }
-        });
+    updateView(model);
   }
 
   @Override

@@ -20,10 +20,8 @@
 package com.spotify.mobius;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -33,13 +31,9 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 
 import com.spotify.mobius.functions.Consumer;
-import com.spotify.mobius.runners.ImmediateWorkRunner;
 import com.spotify.mobius.runners.WorkRunner;
-import com.spotify.mobius.runners.WorkRunners;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.Before;
@@ -74,11 +68,8 @@ public class MobiusLoopControllerTest {
     private final MobiusLoopController<String, String, String> underTest =
         new MobiusLoopController<>(
             Mobius.<String, String, String>loop(
-                    (model, event) -> Next.next(model + event), effectHandler)
-                .eventRunner(WorkRunners::immediate)
-                .effectRunner(WorkRunners::immediate),
-            "init",
-            WorkRunners.immediate());
+                (model, event) -> Next.next(model + event), effectHandler),
+            "init");
 
     @Test
     public void canCreateView() throws Exception {
@@ -199,11 +190,8 @@ public class MobiusLoopControllerTest {
     private final MobiusLoopController<String, String, String> underTest =
         new MobiusLoopController<>(
             Mobius.<String, String, String>loop(
-                    (model, event) -> Next.next(model + event), effectHandler)
-                .eventRunner(WorkRunners::immediate)
-                .effectRunner(WorkRunners::immediate),
-            "init",
-            WorkRunners.immediate());
+                (model, event) -> Next.next(model + event), effectHandler),
+            "init");
 
     @Test
     public void canSaveState() throws Exception {
@@ -287,11 +275,8 @@ public class MobiusLoopControllerTest {
         new MobiusLoopController<>(
             Mobius.<String, String, String>loop(
                     (model, event) -> Next.next(model + event), effectHandler)
-                .eventRunner(WorkRunners::immediate)
-                .effectRunner(WorkRunners::immediate)
                 .init(First::first),
-            "init",
-            WorkRunners.immediate());
+            "init");
 
     @Test
     public void startsFromDefaultModel() throws Exception {
@@ -347,11 +332,8 @@ public class MobiusLoopControllerTest {
         new MobiusLoopController<>(
             Mobius.<String, String, String>loop(
                     (model, event) -> Next.next(model + event), effectHandler)
-                .eventRunner(WorkRunners::immediate)
-                .effectRunner(WorkRunners::immediate)
                 .init(First::first),
-            "init",
-            WorkRunners.immediate());
+            "init");
 
     @Test
     public void modelHandlerMustReturnConsumer() throws Exception {
@@ -409,24 +391,13 @@ public class MobiusLoopControllerTest {
   }
 
   public static class EventsAndUpdates {
-    private final WorkRunner mainThreadRunner = new ImmediateWorkRunner();
-
     private MobiusLoopController<String, String, String> underTest;
 
     @Before
     public void setUp() throws Exception {
-      underTest = createWithWorkRunner(mainThreadRunner);
-    }
-
-    private MobiusLoopController<String, String, String> createWithWorkRunner(
-        WorkRunner mainThreadRunner) {
-      return new MobiusLoopController<>(
-          Mobius.<String, String, String>loop(
-                  (model, event) -> Next.next(model + event), effectHandler)
-              .eventRunner(WorkRunners::immediate)
-              .effectRunner(WorkRunners::immediate),
-          "init",
-          mainThreadRunner);
+      underTest =
+          new MobiusLoopController<>(
+              Mobius.loop((model, event) -> Next.next(model + event), effectHandler), "init");
     }
 
     @Test
@@ -446,39 +417,6 @@ public class MobiusLoopControllerTest {
       consumer.get().accept("!");
 
       verify(renderer).accept("init!");
-    }
-
-    @Test
-    public void updaterReceivesViewUpdatesOnMainThread() throws Exception {
-      KnownThreadWorkRunner mainThreadRunner = new KnownThreadWorkRunner();
-      final AtomicReference<Thread> actualThread = new AtomicReference<>();
-      final Semaphore rendererGotModel = new Semaphore(0);
-
-      @SuppressWarnings("unchecked")
-      Connection<String> renderer =
-          new Connection<String>() {
-            @Override
-            public void accept(String value) {
-              actualThread.set(Thread.currentThread());
-              rendererGotModel.release();
-            }
-
-            @Override
-            public void dispose() {}
-          };
-
-      underTest = createWithWorkRunner(mainThreadRunner);
-
-      underTest.connect(
-          eventConsumer -> {
-            return renderer;
-          });
-
-      underTest.start();
-
-      rendererGotModel.tryAcquire(5, TimeUnit.SECONDS);
-
-      assertThat(actualThread.get(), is(mainThreadRunner.workerThread));
     }
 
     @Test
