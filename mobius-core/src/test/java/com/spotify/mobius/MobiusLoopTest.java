@@ -28,7 +28,6 @@ import static org.junit.Assert.assertFalse;
 import com.google.common.util.concurrent.SettableFuture;
 import com.spotify.mobius.disposables.Disposable;
 import com.spotify.mobius.functions.Consumer;
-import com.spotify.mobius.runners.ExecutorServiceWorkRunner;
 import com.spotify.mobius.runners.WorkRunner;
 import com.spotify.mobius.runners.WorkRunners;
 import com.spotify.mobius.test.RecordingConsumer;
@@ -37,7 +36,6 @@ import com.spotify.mobius.test.SimpleConnection;
 import com.spotify.mobius.test.TestWorkRunner;
 import java.util.Random;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javax.annotation.Nonnull;
@@ -72,15 +70,9 @@ public class MobiusLoopTest {
 
   @Before
   public void setUp() throws Exception {
-    backgroundRunner = new ExecutorServiceWorkRunner(Executors.newSingleThreadExecutor());
-    Init<String, TestEffect> init =
-        new Init<String, TestEffect>() {
-          @Nonnull
-          @Override
-          public First<String, TestEffect> init(String model) {
-            return First.first(model);
-          }
-        };
+    backgroundRunner = WorkRunners.singleThread();
+
+    Init<String, TestEffect> init = First::first;
 
     update =
         new Update<String, TestEvent, TestEffect>() {
@@ -247,22 +239,10 @@ public class MobiusLoopTest {
   @Test
   public void shouldPerformEffectFromInit() throws Exception {
     Init<String, TestEffect> init =
-        new Init<String, TestEffect>() {
-          @Nonnull
-          @Override
-          public First<String, TestEffect> init(String model) {
-            return First.first(model, effects(new SafeEffect("frominit")));
-          }
-        };
+        (String model) -> First.first(model, effects(new SafeEffect("frominit")));
 
     Update<String, TestEvent, TestEffect> update =
-        new Update<String, TestEvent, TestEffect>() {
-          @Nonnull
-          @Override
-          public Next<String, TestEffect> update(String model, TestEvent event) {
-            return Next.next(model + "->" + event.toString());
-          }
-        };
+        (String model, TestEvent event) -> Next.next(model + "->" + event.toString());
 
     mobiusStore = MobiusStore.create(init, update, "init");
     TestWorkRunner testWorkRunner = new TestWorkRunner();
@@ -272,7 +252,7 @@ public class MobiusLoopTest {
             new SimpleConnection<TestEffect>() {
               @Override
               public void accept(TestEffect effect) {
-                backgroundRunner.post(() -> eventConsumer.accept(new TestEvent(effect.toString())));
+                testWorkRunner.post(() -> eventConsumer.accept(new TestEvent(effect.toString())));
               }
             });
 
@@ -483,6 +463,26 @@ public class MobiusLoopTest {
     effectObserver.assertValues();
   }
 
+  @Test
+  public void shouldDisposeMultiThreadedEventSourceSafely() throws Exception {
+    // event source that just pushes stuff every X ms on a thread.
+
+    RecurringEventSource source = new RecurringEventSource();
+
+    final MobiusLoop.Builder<String, TestEvent, TestEffect> builder =
+        Mobius.loop(update, effectHandler).eventSource(source);
+
+    Random random = new Random();
+
+    for (int i = 0; i < 100; i++) {
+      mobiusLoop = builder.startFrom("foo");
+
+      Thread.sleep(random.nextInt(30));
+
+      mobiusLoop.dispose();
+    }
+  }
+
   private void setupWithEffects(Connectable<TestEffect, TestEvent> effectHandler) {
     observer = new RecordingModelObserver<>();
 
@@ -616,26 +616,6 @@ public class MobiusLoopTest {
           eventConsumer.accept(new TestEvent("bar"));
         }
       };
-    }
-  }
-
-  @Test
-  public void shouldDisposeMultiThreadedEventSourceSafely() throws Exception {
-    // event source that just pushes stuff every X ms on a thread.
-
-    RecurringEventSource source = new RecurringEventSource();
-
-    final MobiusLoop.Builder<String, TestEvent, TestEffect> builder =
-        Mobius.loop(update, effectHandler).eventSource(source);
-
-    Random random = new Random();
-
-    for (int i = 0; i < 100; i++) {
-      mobiusLoop = builder.startFrom("foo");
-
-      Thread.sleep(random.nextInt(30));
-
-      mobiusLoop.dispose();
     }
   }
 
