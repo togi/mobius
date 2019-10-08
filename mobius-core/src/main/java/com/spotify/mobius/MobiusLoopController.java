@@ -123,7 +123,8 @@ class MobiusLoopController<M, E, F>
   @Override
   public void goToStateCreated(Connectable<M, E> view, M nextModelToStartFrom) {
 
-    SafeConnectable<M, E> safeModelHandler = new SafeConnectable<>(checkNotNull(view));
+    DisableableConnectable<M, E> safeModelHandler =
+        new DisableableConnectable<>(checkNotNull(view));
 
     Connection<M> modelConnection =
         safeModelHandler.connect(
