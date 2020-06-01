@@ -22,6 +22,8 @@ package com.spotify.mobius2;
 import static com.spotify.mobius2.internal_util.Preconditions.checkNotNull;
 
 import com.spotify.mobius2.functions.Consumer;
+import java.util.LinkedList;
+import java.util.Queue;
 
 /**
  * Processes events and emits effects and models as a result of that.
@@ -45,17 +47,42 @@ class EventProcessor<M, E, F> {
     this.modelConsumer = checkNotNull(modelConsumer);
   }
 
-  synchronized void update(E event) {
-    Next<M, F> next = store.update(event);
+  private volatile boolean busyHandlingEvents = false;
+  private Queue<E> eventQueue = new LinkedList<>();
 
-    next.ifHasModel(
-        new Consumer<M>() {
-          @Override
-          public void accept(M model) {
-            dispatchModel(model);
-          }
-        });
-    dispatchEffects(next.effects());
+  void update(E event) {
+
+    synchronized (this) {
+      eventQueue.add(event);
+
+      if (busyHandlingEvents) {
+        return;
+      } else {
+        busyHandlingEvents = true;
+      }
+    }
+
+    while (true) {
+
+      Iterable<E> events;
+
+      synchronized (this) {
+        if (eventQueue.isEmpty()) {
+          busyHandlingEvents = false;
+          return;
+        }
+
+        events = eventQueue;
+        eventQueue = new LinkedList<>();
+      }
+
+      for (E queuedEvent : events) {
+        Next<M, F> next = store.update(queuedEvent);
+
+        next.ifHasModel(this::dispatchModel);
+        dispatchEffects(next.effects());
+      }
+    }
   }
 
   private void dispatchModel(M model) {
